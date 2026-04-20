@@ -1,4 +1,4 @@
-# Messaging Platform - 이직 포트폴리오
+# Messaging Platform
 
 SMS / MMS / App Push 메시지 플랫폼 시뮬레이션 프로젝트.  
 이동통신 코어/부가서비스 개발 포지션 학습 목적으로 제작.
