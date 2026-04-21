@@ -92,9 +92,7 @@ src/main/java/com/messaging/
 - **Producer-Consumer 패턴**: 대용량 비동기 처리 핵심
 - **Exponential Backoff**: 재전송 신뢰성 보장
 
-## 공고 요건 매핑
-
-| 공고 요건 | 구현 내용 |
+## 구현 내용
 |---|---|
 | Java 서버 개발 | Spring Boot REST API |
 | 이동통신 코어/부가서비스 | SMS(SMSC), MMS, Push 플랫폼 |
