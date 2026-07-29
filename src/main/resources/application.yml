@@ -1,0 +1,29 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: message-project
+
+  datasource:
+    # 인메모리 H2 → 앱을 끄면 데이터가 사라짐 (학습용)
+    # 2단계에서 이 부분을 AWS RDS(MySQL) 접속 정보로 교체할 예정
+    url: jdbc:h2:mem:messagedb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console   # 브라우저에서 DB를 직접 볼 수 있는 콘솔
+
+  jpa:
+    hibernate:
+      ddl-auto: update    # 엔티티 기준으로 테이블 자동 생성
+    show-sql: false
+
+app:
+  worker:
+    count: 3              # 발송 워커 쓰레드 개수
+    send-delay-ms: 1000   # 발송 시뮬레이션 소요 시간(ms)
