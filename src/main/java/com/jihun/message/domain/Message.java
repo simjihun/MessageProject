@@ -30,7 +30,10 @@ public class Message {
 
     private LocalDateTime sentAt;     // 발송 완료 시각
 
-    private String workerName;        // 어떤 워커 쓰레드가 처리했는지 (멀티쓰레드 동작 확인용)
+    private String workerName;        // 어떤 워커 쓰레드가 처리했는지
+
+    @Column(nullable = false)
+    private int retryCount;           // 재시도 횟수 (실무 메시징 시스템 필수 필드)
 
     protected Message() {
         // JPA가 사용하는 기본 생성자
@@ -41,6 +44,7 @@ public class Message {
         this.content = content;
         this.status = MessageStatus.PENDING;
         this.createdAt = LocalDateTime.now();
+        this.retryCount = 0;
     }
 
     /** 워커가 발송 처리를 시작할 때 호출 */
@@ -55,10 +59,30 @@ public class Message {
         this.sentAt = LocalDateTime.now();
     }
 
-    /** 발송 실패 */
+    /** 발송 실패 확정 (재시도 횟수 소진) */
     public void markFailed() {
         this.status = MessageStatus.FAILED;
         this.sentAt = LocalDateTime.now();
+    }
+
+    /** 자동 재시도 가능 여부 */
+    public boolean canRetry(int maxRetry) {
+        return retryCount < maxRetry;
+    }
+
+    /** 자동 재시도 준비: 횟수 증가 후 다시 대기 상태로 */
+    public void prepareRetry() {
+        this.retryCount++;
+        this.status = MessageStatus.PENDING;
+        this.workerName = null;
+    }
+
+    /** 수동 재발송: 모든 상태를 초기화하고 처음부터 다시 */
+    public void resetForResend() {
+        this.retryCount = 0;
+        this.status = MessageStatus.PENDING;
+        this.sentAt = null;
+        this.workerName = null;
     }
 
     // --- Getter (화면/API 응답용) ---
@@ -69,4 +93,5 @@ public class Message {
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getSentAt() { return sentAt; }
     public String getWorkerName() { return workerName; }
+    public int getRetryCount() { return retryCount; }
 }

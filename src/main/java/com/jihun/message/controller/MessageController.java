@@ -2,13 +2,16 @@ package com.jihun.message.controller;
 
 import com.jihun.message.controller.dto.MessageSendRequest;
 import com.jihun.message.domain.Message;
+import com.jihun.message.domain.MessageStatus;
 import com.jihun.message.queue.MessageQueue;
 import com.jihun.message.repository.MessageRepository;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -16,8 +19,6 @@ import java.util.Map;
  *
  * 핵심 설계: API는 발송을 "직접" 하지 않는다.
  * DB에 저장하고 큐에 넣은 뒤 즉시 응답한다(비동기 처리).
- * 실제 발송은 백그라운드 워커가 담당한다.
- * → 발송이 느려도 API 응답 속도에 영향이 없다.
  */
 @RestController
 public class MessageController {
@@ -34,26 +35,55 @@ public class MessageController {
     @PostMapping("/api/messages")
     public ResponseEntity<Message> send(@Valid @RequestBody MessageSendRequest request) {
         Message message = new Message(request.receiver(), request.content());
-        messageRepository.save(message);   // 1. 이력을 DB에 먼저 저장 (PENDING)
-        messageQueue.enqueue(message.getId()); // 2. 큐에 ID를 적재 → 워커가 처리
+        messageRepository.save(message);
+        messageQueue.enqueue(message.getId());
         return ResponseEntity.ok(message);
     }
 
-    /** 발송 이력 조회 (최신 50건) */
+    /**
+     * 발송 이력 조회 — 상태 필터 + 수신번호 검색 + 페이징
+     * 예) /api/messages?status=FAILED&receiver=1234&page=0&size=15
+     */
     @GetMapping("/api/messages")
-    public List<Message> list() {
-        return messageRepository.findTop50ByOrderByIdDesc();
+    public Page<Message> list(@RequestParam(required = false) MessageStatus status,
+                              @RequestParam(required = false) String receiver,
+                              @RequestParam(defaultValue = "0") int page,
+                              @RequestParam(defaultValue = "15") int size) {
+        Pageable pageable = PageRequest.of(page, Math.min(size, 100));
+        boolean hasReceiver = receiver != null && !receiver.isBlank();
+
+        if (status != null && hasReceiver) {
+            return messageRepository.findByStatusAndReceiverContainingOrderByIdDesc(status, receiver, pageable);
+        }
+        if (status != null) {
+            return messageRepository.findByStatusOrderByIdDesc(status, pageable);
+        }
+        if (hasReceiver) {
+            return messageRepository.findByReceiverContainingOrderByIdDesc(receiver, pageable);
+        }
+        return messageRepository.findAllByOrderByIdDesc(pageable);
     }
 
-    /** 현재 대기열 상태 */
-    @GetMapping("/api/queue/status")
-    public Map<String, Object> queueStatus() {
-        return Map.of("waiting", messageQueue.size());
+    /** 실패 메시지 수동 재발송 */
+    @PostMapping("/api/messages/{id}/resend")
+    public ResponseEntity<?> resend(@PathVariable Long id) {
+        Message message = messageRepository.findById(id).orElse(null);
+        if (message == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (message.getStatus() != MessageStatus.FAILED) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "실패(FAILED) 상태의 메시지만 재발송할 수 있습니다"));
+        }
+        message.resetForResend();
+        messageRepository.save(message);
+        messageQueue.enqueue(message.getId());
+        return ResponseEntity.ok(message);
     }
 
     /**
      * 헬스체크 엔드포인트.
-     * 나중에 AWS 로드밸런서(ALB)나 ECS가 "이 서버 살아있나?"를 확인할 때 사용한다.
+     * 나중에 AWS 로드밸런서(ALB)나 ECS가 서버 생존 확인용으로 사용한다.
      */
     @GetMapping("/healthz")
     public Map<String, String> healthz() {

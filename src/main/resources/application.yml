@@ -10,7 +10,7 @@ spring:
 
   datasource:
     # 인메모리 H2 → 앱을 끄면 데이터가 사라짐 (학습용)
-    # 2단계에서 이 부분을 AWS RDS(MySQL) 접속 정보로 교체할 예정
+    # 다음 단계에서 이 부분을 AWS RDS(MySQL) 접속 정보로 교체 예정
     url: jdbc:h2:mem:messagedb
     driver-class-name: org.h2.Driver
     username: sa
@@ -30,3 +30,4 @@ app:
   worker:
     count: 3              # 발송 워커 쓰레드 개수
     send-delay-ms: 1000   # 발송 시뮬레이션 소요 시간(ms)
+    max-retry: 2          # 발송 실패 시 자동 재시도 횟수 (총 시도 = 1 + max-retry)

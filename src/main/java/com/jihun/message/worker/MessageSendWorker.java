@@ -20,10 +20,7 @@ import java.util.concurrent.TimeUnit;
  *
  * 앱이 시작되면 워커 쓰레드 N개가 백그라운드에서 무한 루프를 돌며
  * 큐에서 메시지를 꺼내 발송 처리한다.
- * 채용공고의 "멀티쓰레드 환경의 데몬 프로그램"에 해당하는 구조.
- *
- * 실제 시스템이라면 여기서 SMPP 프로토콜로 통신사 서버와 소켓 통신을 하겠지만,
- * 이 프로젝트에서는 Thread.sleep()으로 발송 소요 시간을 시뮬레이션한다.
+ * 발송 실패 시 최대 max-retry회까지 자동 재시도한다. (실무 메시징 핵심 로직)
  */
 @Component
 public class MessageSendWorker {
@@ -32,6 +29,7 @@ public class MessageSendWorker {
 
     private final MessageQueue messageQueue;
     private final MessageRepository messageRepository;
+    private final WorkerStatusRegistry registry;
 
     @Value("${app.worker.count}")
     private int workerCount;
@@ -39,35 +37,38 @@ public class MessageSendWorker {
     @Value("${app.worker.send-delay-ms}")
     private long sendDelayMs;
 
+    @Value("${app.worker.max-retry}")
+    private int maxRetry;
+
     private ExecutorService executor;
 
-    // volatile: 여러 쓰레드가 이 값을 읽을 때 항상 최신 값을 보도록 보장
     private volatile boolean running = true;
 
-    public MessageSendWorker(MessageQueue messageQueue, MessageRepository messageRepository) {
+    public MessageSendWorker(MessageQueue messageQueue,
+                             MessageRepository messageRepository,
+                             WorkerStatusRegistry registry) {
         this.messageQueue = messageQueue;
         this.messageRepository = messageRepository;
+        this.registry = registry;
     }
 
-    /** 앱 시작 시 워커 쓰레드들을 띄운다 */
     @PostConstruct
     public void start() {
         executor = Executors.newFixedThreadPool(workerCount);
         for (int i = 1; i <= workerCount; i++) {
             String workerName = "worker-" + i;
+            registry.idle(workerName);
             executor.submit(() -> runLoop(workerName));
         }
-        log.info("메시지 발송 워커 {}개 시작", workerCount);
+        log.info("메시지 발송 워커 {}개 시작 (최대 재시도 {}회)", workerCount, maxRetry);
     }
 
-    /** 각 워커 쓰레드가 실행하는 무한 루프 */
     private void runLoop(String workerName) {
         Thread.currentThread().setName(workerName);
         log.info("[{}] 발송 루프 시작", workerName);
 
         while (running) {
             try {
-                // 큐가 비어 있으면 1초 대기 후 null → running 플래그를 다시 확인
                 Long messageId = messageQueue.poll(1, TimeUnit.SECONDS);
                 if (messageId == null) {
                     continue;
@@ -77,7 +78,6 @@ public class MessageSendWorker {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
-                // 한 건 실패해도 워커는 죽지 않고 다음 메시지를 계속 처리해야 한다
                 log.error("[{}] 처리 중 예외 발생", workerName, e);
             }
         }
@@ -92,26 +92,42 @@ public class MessageSendWorker {
             return;
         }
 
-        message.markSending(workerName);
-        messageRepository.save(message);
-        log.info("[{}] 발송 시작 id={} to={}", workerName, messageId, message.getReceiver());
+        // 워커 상태를 '발송 중'으로 등록 (대시보드 실시간 표시용)
+        registry.sending(workerName, messageId, message.getReceiver());
+        try {
+            message.markSending(workerName);
+            messageRepository.save(message);
+            log.info("[{}] 발송 시작 id={} to={} (시도 {}회차)",
+                    workerName, messageId, message.getReceiver(), message.getRetryCount() + 1);
 
-        // === 발송 시뮬레이션 (실제라면 SMPP 소켓 통신 구간) ===
-        Thread.sleep(sendDelayMs);
+            // === 발송 시뮬레이션 (실제라면 SMPP 소켓 통신 구간) ===
+            Thread.sleep(sendDelayMs);
 
-        // 90% 성공, 10% 실패로 시뮬레이션
-        boolean success = ThreadLocalRandom.current().nextInt(100) < 90;
-        if (success) {
-            message.markSent();
-            log.info("[{}] 발송 성공 id={}", workerName, messageId);
-        } else {
-            message.markFailed();
-            log.warn("[{}] 발송 실패 id={}", workerName, messageId);
+            boolean success = ThreadLocalRandom.current().nextInt(100) < 90;
+            if (success) {
+                message.markSent();
+                messageRepository.save(message);
+                log.info("[{}] 발송 성공 id={}", workerName, messageId);
+            } else if (message.canRetry(maxRetry)) {
+                // 재시도 가능 → 큐에 다시 적재 (자동 재시도)
+                message.prepareRetry();
+                messageRepository.save(message);
+                messageQueue.enqueue(messageId);
+                log.warn("[{}] 발송 실패 → 재시도 예약 id={} ({}회차 재시도)",
+                        workerName, messageId, message.getRetryCount());
+            } else {
+                // 재시도 횟수 소진 → 최종 실패 확정
+                message.markFailed();
+                messageRepository.save(message);
+                log.warn("[{}] 발송 최종 실패 id={} (재시도 {}회 소진)",
+                        workerName, messageId, message.getRetryCount());
+            }
+        } finally {
+            // 성공하든 실패하든 워커는 반드시 다시 IDLE로 복귀
+            registry.idle(workerName);
         }
-        messageRepository.save(message);
     }
 
-    /** 앱 종료 시 워커들을 정리한다 (Graceful Shutdown) */
     @PreDestroy
     public void stop() throws InterruptedException {
         log.info("워커 종료 신호 전송");
