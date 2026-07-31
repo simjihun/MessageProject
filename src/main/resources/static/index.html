@@ -3,101 +3,343 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>미니 메시지 발송 시스템</title>
+<title>MSG Gateway Console</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <style>
-  * { box-sizing: border-box; }
-  body { font-family: 'Segoe UI', 'Malgun Gothic', sans-serif; background: #f4f6f9; margin: 0; padding: 24px; color: #222; }
-  .wrap { max-width: 860px; margin: 0 auto; }
-  h1 { font-size: 22px; }
-  .card { background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-  label { display: block; font-size: 13px; margin: 10px 0 4px; color: #555; }
-  input, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
-  textarea { resize: vertical; min-height: 70px; }
-  button { margin-top: 14px; padding: 10px 22px; background: #2563eb; color: #fff; border: 0; border-radius: 6px; font-size: 14px; cursor: pointer; }
-  button:hover { background: #1d4ed8; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { padding: 8px 10px; border-bottom: 1px solid #eee; text-align: left; }
-  th { background: #fafafa; color: #666; }
-  .badge { padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-  .PENDING { background: #fef3c7; color: #92400e; }
-  .SENDING { background: #dbeafe; color: #1e40af; }
-  .SENT    { background: #dcfce7; color: #166534; }
-  .FAILED  { background: #fee2e2; color: #991b1b; }
-  .meta { font-size: 13px; color: #666; }
+:root{
+  --bg:#0B101B; --panel:#131A2A; --panel-2:#0F1522; --line:#243149;
+  --ink:#DEE5F2; --mut:#7E8DA9; --dim:#4E5B75;
+  --amber:#F2A93B; --green:#3ECF8E; --red:#F16063; --blue:#5AA2FF;
+  --mono:'JetBrains Mono',monospace; --sans:'Pretendard Variable',Pretendard,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px}
+button{font-family:var(--sans)}
+
+/* ===== 레이아웃 ===== */
+.shell{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
+aside{background:var(--panel-2);border-right:1px solid var(--line);padding:20px 14px;display:flex;flex-direction:column;gap:4px}
+.logo{display:flex;align-items:center;gap:10px;padding:6px 10px 22px}
+.logo-mark{width:30px;height:30px;border-radius:8px;background:var(--amber);display:grid;place-items:center;color:#131A2A;font-family:var(--mono);font-weight:700;font-size:13px}
+.logo b{font-size:15px;letter-spacing:-.2px}
+.logo small{display:block;color:var(--mut);font-size:11px;font-weight:400}
+.nav-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:0;border-radius:8px;background:transparent;color:var(--mut);font-size:13.5px;cursor:pointer;text-align:left}
+.nav-btn:hover{color:var(--ink);background:rgba(255,255,255,.04)}
+.nav-btn.on{background:rgba(242,169,59,.12);color:var(--amber);font-weight:600}
+.side-foot{margin-top:auto;padding:12px 10px;border-top:1px solid var(--line);color:var(--dim);font-size:11.5px;line-height:1.7}
+.side-foot b{color:var(--mut);font-family:var(--mono)}
+
+main{padding:22px 28px;max-width:1180px}
+header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:20px}
+header h1{font-size:19px;letter-spacing:-.3px}
+.live{display:flex;align-items:center;gap:8px;color:var(--mut);font-size:12px;font-family:var(--mono)}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.live-dot,.lane-dot{animation:none!important}}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+.panel h2{font-size:12px;color:var(--mut);font-weight:600;letter-spacing:.6px;text-transform:uppercase;margin-bottom:14px}
+
+/* ===== 시그니처: 라이브 파이프라인 ===== */
+.pipeline{display:grid;grid-template-columns:1fr 34px 1.6fr 34px 1fr;align-items:stretch;gap:0;margin-bottom:16px}
+.pipe-node{display:flex;flex-direction:column;justify-content:center;gap:6px}
+.pipe-node .num{font-family:var(--mono);font-size:30px;font-weight:700}
+.pipe-node .lbl{color:var(--mut);font-size:12px}
+.pipe-arrow{display:grid;place-items:center;color:var(--dim);font-size:16px}
+.lanes{display:flex;flex-direction:column;gap:8px;justify-content:center}
+.lane{display:flex;align-items:center;gap:10px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:12.5px}
+.lane-dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
+.lane.busy .lane-dot{background:var(--amber);animation:pulse 1s infinite}
+.lane .who{color:var(--mut);width:70px;flex:none}
+.lane .doing{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lane.busy .doing{color:var(--amber)}
+.pipe-out{display:flex;flex-direction:column;gap:10px;justify-content:center}
+.pipe-out .row{display:flex;align-items:baseline;gap:8px}
+.pipe-out .num{font-family:var(--mono);font-size:20px;font-weight:700}
+.pipe-out .lbl{color:var(--mut);font-size:12px}
+.c-green{color:var(--green)}.c-red{color:var(--red)}.c-amber{color:var(--amber)}.c-blue{color:var(--blue)}
+
+/* ===== 통계 카드 ===== */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.stat .k{color:var(--mut);font-size:12px;margin-bottom:6px}
+.stat .v{font-family:var(--mono);font-size:24px;font-weight:700}
+.stat .v small{font-size:13px;color:var(--mut);font-weight:400}
+
+.chart-wrap{height:240px}
+
+/* ===== 폼 ===== */
+label{display:block;font-size:12px;color:var(--mut);margin:12px 0 6px}
+input,textarea,select{width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:10px 12px;font-size:14px;font-family:var(--sans)}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--amber);outline-offset:-1px;border-color:transparent}
+textarea{resize:vertical;min-height:80px}
+.btn{margin-top:16px;padding:10px 20px;border:0;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer}
+.btn:focus-visible,.nav-btn:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.btn-amber{background:var(--amber);color:#131A2A}
+.btn-amber:hover{filter:brightness(1.08)}
+.btn-ghost{background:transparent;border:1px solid var(--line);color:var(--mut)}
+.btn-ghost:hover{color:var(--ink);border-color:var(--mut)}
+.msg-result{margin-left:12px;font-size:12.5px;color:var(--mut)}
+
+/* ===== 테이블 ===== */
+.filters{display:flex;gap:10px;margin-bottom:14px}
+.filters select{width:150px}
+.filters input{width:220px}
+.filters .btn{margin-top:0}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{color:var(--mut);font-weight:500;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left}
+td{font-family:var(--mono);font-size:12.5px}
+td.txt{font-family:var(--sans);font-size:13px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;font-family:var(--sans)}
+.PENDING{background:rgba(242,169,59,.14);color:var(--amber)}
+.SENDING{background:rgba(90,162,255,.14);color:var(--blue)}
+.SENT{background:rgba(62,207,142,.14);color:var(--green)}
+.FAILED{background:rgba(241,96,99,.14);color:var(--red)}
+.mini{padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--mut);font-size:11.5px;cursor:pointer}
+.mini:hover{color:var(--amber);border-color:var(--amber)}
+.paging{display:flex;align-items:center;gap:14px;justify-content:flex-end;margin-top:14px;color:var(--mut);font-size:12.5px;font-family:var(--mono)}
+.empty{padding:32px;text-align:center;color:var(--dim);font-size:13px}
+
+.view{display:none}.view.on{display:block}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  aside{flex-direction:row;align-items:center;padding:10px}
+  .logo{padding:0 8px}.side-foot{display:none}
+  .pipeline{grid-template-columns:1fr}.pipe-arrow{display:none}
+  .stat-grid{grid-template-columns:repeat(2,1fr)}
+  main{padding:16px}
+}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>📨 미니 메시지 발송 시스템</h1>
+<div class="shell">
+  <aside>
+    <div class="logo">
+      <div class="logo-mark">GW</div>
+      <div><b>MSG Gateway</b><small>message console</small></div>
+    </div>
+    <button class="nav-btn on" data-view="dash" onclick="switchView('dash')">▣&ensp;대시보드</button>
+    <button class="nav-btn" data-view="send" onclick="switchView('send')">➤&ensp;메시지 발송</button>
+    <button class="nav-btn" data-view="hist" onclick="switchView('hist')">≡&ensp;발송 이력</button>
+    <div class="side-foot">
+      워커 쓰레드 <b id="footWorkers">-</b>개<br>
+      대기열 <b id="footQueue">0</b>건<br>
+      재시도 최대 <b>2</b>회
+    </div>
+  </aside>
 
-  <div class="card">
-    <label for="receiver">수신 번호</label>
-    <input id="receiver" placeholder="010-1234-5678">
-    <label for="content">메시지 내용</label>
-    <textarea id="content" placeholder="보낼 내용을 입력하세요"></textarea>
-    <button onclick="sendMessage()">발송 요청</button>
-    <button onclick="sendBulk()" style="background:#059669">테스트 10건 한번에 발송</button>
-    <span id="result" class="meta"></span>
-  </div>
+  <main>
+    <header>
+      <h1 id="viewTitle">대시보드</h1>
+      <div class="live"><span class="live-dot"></span><span id="clock">--:--:--</span>&ensp;·&ensp;2s 자동 갱신</div>
+    </header>
 
-  <div class="card">
-    <div class="meta" style="margin-bottom:8px">대기열: <b id="queueSize">0</b>건 · 2초마다 자동 새로고침</div>
-    <table>
-      <thead>
-        <tr><th>ID</th><th>수신번호</th><th>내용</th><th>상태</th><th>처리 워커</th><th>접수</th><th>완료</th></tr>
-      </thead>
-      <tbody id="list"></tbody>
-    </table>
-  </div>
+    <!-- ===== 대시보드 ===== -->
+    <section id="view-dash" class="view on">
+      <div class="panel pipeline-panel" style="margin-bottom:16px">
+        <h2>라이브 파이프라인</h2>
+        <div class="pipeline">
+          <div class="pipe-node">
+            <div class="num c-amber" id="pWaiting">0</div>
+            <div class="lbl">발송 대기 (큐 + PENDING)</div>
+          </div>
+          <div class="pipe-arrow">›</div>
+          <div class="lanes" id="lanes"></div>
+          <div class="pipe-arrow">›</div>
+          <div class="pipe-out">
+            <div class="row"><span class="num c-green" id="pSent">0</span><span class="lbl">발송 성공</span></div>
+            <div class="row"><span class="num c-red" id="pFailed">0</span><span class="lbl">최종 실패</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat"><div class="k">총 접수</div><div class="v" id="sTotal">0</div></div>
+        <div class="stat"><div class="k">성공률</div><div class="v c-green"><span id="sRate">100</span><small>%</small></div></div>
+        <div class="stat"><div class="k">처리 중</div><div class="v c-blue" id="sSending">0</div></div>
+        <div class="stat"><div class="k">대기열</div><div class="v c-amber" id="sQueue">0</div></div>
+      </div>
+
+      <div class="panel">
+        <h2>분당 처리량 · 최근 30분</h2>
+        <div class="chart-wrap"><canvas id="chart"></canvas></div>
+      </div>
+    </section>
+
+    <!-- ===== 메시지 발송 ===== -->
+    <section id="view-send" class="view">
+      <div class="panel" style="max-width:560px">
+        <h2>신규 발송</h2>
+        <label for="receiver">수신 번호</label>
+        <input id="receiver" placeholder="010-1234-5678">
+        <label for="content">메시지 내용</label>
+        <textarea id="content" placeholder="보낼 내용을 입력하세요"></textarea>
+        <button class="btn btn-amber" onclick="sendOne()">발송 요청</button>
+        <span class="msg-result" id="sendResult"></span>
+      </div>
+      <div class="panel" style="max-width:560px;margin-top:14px">
+        <h2>부하 테스트</h2>
+        <p style="color:var(--mut);font-size:13px;line-height:1.7">대량 요청을 한 번에 적재해 워커들이 나눠 처리하는 과정을 대시보드에서 확인할 수 있습니다.</p>
+        <button class="btn btn-ghost" onclick="sendBulk(10)">10건 발송</button>
+        <button class="btn btn-ghost" onclick="sendBulk(50)">50건 발송</button>
+        <span class="msg-result" id="bulkResult"></span>
+      </div>
+    </section>
+
+    <!-- ===== 발송 이력 ===== -->
+    <section id="view-hist" class="view">
+      <div class="panel">
+        <div class="filters">
+          <select id="fStatus" onchange="loadHistory(0)">
+            <option value="">상태 전체</option>
+            <option value="PENDING">PENDING</option>
+            <option value="SENDING">SENDING</option>
+            <option value="SENT">SENT</option>
+            <option value="FAILED">FAILED</option>
+          </select>
+          <input id="fReceiver" placeholder="수신번호 검색" onkeydown="if(event.key==='Enter')loadHistory(0)">
+          <button class="btn btn-ghost" onclick="loadHistory(0)">검색</button>
+        </div>
+        <table>
+          <thead><tr><th>ID</th><th>수신번호</th><th>내용</th><th>상태</th><th>재시도</th><th>워커</th><th>접수</th><th>완료</th><th></th></tr></thead>
+          <tbody id="histBody"></tbody>
+        </table>
+        <div class="empty" id="histEmpty" style="display:none">조건에 맞는 발송 이력이 없습니다. 메시지 발송 메뉴에서 첫 메시지를 보내보세요.</div>
+        <div class="paging">
+          <button class="mini" onclick="loadHistory(curPage-1)">‹ 이전</button>
+          <span id="pageInfo">0 / 0</span>
+          <button class="mini" onclick="loadHistory(curPage+1)">다음 ›</button>
+        </div>
+      </div>
+    </section>
+  </main>
 </div>
 
 <script>
-async function sendMessage() {
-  const receiver = document.getElementById('receiver').value.trim();
-  const content = document.getElementById('content').value.trim();
-  const res = await fetch('/api/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ receiver, content })
-  });
-  document.getElementById('result').textContent = res.ok ? ' ✅ 접수 완료' : ' ❌ 입력값을 확인하세요';
-  refresh();
+let curView='dash', curPage=0, totalPages=0, chart;
+const $=id=>document.getElementById(id);
+const TITLES={dash:'대시보드',send:'메시지 발송',hist:'발송 이력'};
+
+function switchView(v){
+  curView=v;
+  document.querySelectorAll('.view').forEach(s=>s.classList.remove('on'));
+  $('view-'+v).classList.add('on');
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('on',b.dataset.view===v));
+  $('viewTitle').textContent=TITLES[v];
+  if(v==='hist')loadHistory(0);
 }
 
-// 멀티쓰레드 동작을 눈으로 확인하기 위한 대량 발송 테스트
-async function sendBulk() {
-  for (let i = 1; i <= 10; i++) {
-    await fetch('/api/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ receiver: '010-0000-' + String(i).padStart(4, '0'), content: '대량 테스트 ' + i })
-    });
+/* ===== 발송 ===== */
+async function sendOne(){
+  const receiver=$('receiver').value.trim(), content=$('content').value.trim();
+  const res=await fetch('/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({receiver,content})});
+  $('sendResult').textContent=res.ok?'접수 완료 — 대시보드에서 처리 과정을 확인하세요':'수신 번호와 내용을 모두 입력하세요';
+  if(res.ok){$('content').value='';}
+  loadStats();
+}
+async function sendBulk(n){
+  $('bulkResult').textContent=n+'건 적재 중...';
+  const reqs=[];
+  for(let i=1;i<=n;i++){
+    reqs.push(fetch('/api/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({receiver:'010-'+String(1000+Math.floor(Math.random()*9000))+'-'+String(i).padStart(4,'0'),content:'부하 테스트 '+i+'/'+n})}));
   }
-  refresh();
+  await Promise.all(reqs);
+  $('bulkResult').textContent=n+'건 적재 완료';
+  loadStats();
+}
+async function resend(id){
+  await fetch('/api/messages/'+id+'/resend',{method:'POST'});
+  loadHistory(curPage);
 }
 
-function fmt(t) { return t ? t.replace('T', ' ').substring(5, 19) : '-'; }
+/* ===== 통계/파이프라인 ===== */
+async function loadStats(){
+  try{
+    const s=await fetch('/api/stats').then(r=>r.json());
+    $('pWaiting').textContent=s.pending;
+    $('pSent').textContent=s.sent;
+    $('pFailed').textContent=s.failed;
+    $('sTotal').textContent=s.total;
+    $('sRate').textContent=s.successRate;
+    $('sSending').textContent=s.sending;
+    $('sQueue').textContent=s.queueWaiting;
+    $('footQueue').textContent=s.queueWaiting;
+    $('footWorkers').textContent=s.workers.length;
+    $('lanes').innerHTML=s.workers.map(w=>`
+      <div class="lane ${w.status==='SENDING'?'busy':''}">
+        <span class="lane-dot"></span>
+        <span class="who">${w.worker}</span>
+        <span class="doing">${w.status==='SENDING'?('▶ #'+w.messageId+' '+w.receiver):'대기 중'}</span>
+      </div>`).join('');
+    updateChart(s.chart);
+  }catch(e){/* 서버 재시작 등 순간 오류는 무시하고 다음 주기에 갱신 */}
+}
 
-async function refresh() {
-  const [msgs, q] = await Promise.all([
-    fetch('/api/messages').then(r => r.json()),
-    fetch('/api/queue/status').then(r => r.json())
-  ]);
-  document.getElementById('queueSize').textContent = q.waiting;
-  document.getElementById('list').innerHTML = msgs.map(m => `
+function updateChart(c){
+  if(!chart){
+    Chart.defaults.color='#7E8DA9';
+    Chart.defaults.borderColor='#243149';
+    Chart.defaults.font.family="'JetBrains Mono',monospace";
+    Chart.defaults.font.size=10;
+    chart=new Chart($('chart'),{
+      type:'bar',
+      data:{labels:c.labels,datasets:[
+        {label:'접수',data:c.created,backgroundColor:'rgba(242,169,59,.55)',borderRadius:3,barPercentage:.6},
+        {label:'성공',data:c.sent,type:'line',borderColor:'#3ECF8E',backgroundColor:'#3ECF8E',pointRadius:0,borderWidth:2,tension:.3},
+        {label:'실패',data:c.failed,type:'line',borderColor:'#F16063',backgroundColor:'#F16063',pointRadius:0,borderWidth:2,tension:.3}
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,animation:false,
+        plugins:{legend:{labels:{boxWidth:10,font:{family:"'Pretendard Variable',sans-serif",size:11}}}},
+        scales:{y:{beginAtZero:true,ticks:{precision:0}},x:{ticks:{maxTicksLimit:10}}}}
+    });
+  }else{
+    chart.data.labels=c.labels;
+    chart.data.datasets[0].data=c.created;
+    chart.data.datasets[1].data=c.sent;
+    chart.data.datasets[2].data=c.failed;
+    chart.update('none');
+  }
+}
+
+/* ===== 이력 ===== */
+const fmt=t=>t?t.replace('T',' ').substring(5,19):'-';
+async function loadHistory(page){
+  if(page<0||(totalPages>0&&page>=totalPages))return;
+  curPage=page;
+  const status=$('fStatus').value, receiver=$('fReceiver').value.trim();
+  const qs=new URLSearchParams({page,size:15});
+  if(status)qs.set('status',status);
+  if(receiver)qs.set('receiver',receiver);
+  const d=await fetch('/api/messages?'+qs).then(r=>r.json());
+  totalPages=d.totalPages;
+  $('pageInfo').textContent=(d.totalElements===0?0:d.number+1)+' / '+d.totalPages+' · 총 '+d.totalElements+'건';
+  $('histEmpty').style.display=d.content.length?'none':'block';
+  $('histBody').innerHTML=d.content.map(m=>`
     <tr>
       <td>${m.id}</td>
       <td>${m.receiver}</td>
-      <td>${m.content}</td>
+      <td class="txt" title="${m.content.replaceAll('"','&quot;')}">${m.content}</td>
       <td><span class="badge ${m.status}">${m.status}</span></td>
-      <td>${m.workerName ?? '-'}</td>
+      <td>${m.retryCount>0?m.retryCount+'회':'-'}</td>
+      <td>${m.workerName??'-'}</td>
       <td>${fmt(m.createdAt)}</td>
       <td>${fmt(m.sentAt)}</td>
+      <td>${m.status==='FAILED'?`<button class="mini" onclick="resend(${m.id})">재발송</button>`:''}</td>
     </tr>`).join('');
 }
 
-refresh();
-setInterval(refresh, 2000);
+/* ===== 주기 갱신 ===== */
+setInterval(()=>{
+  loadStats();
+  if(curView==='hist')loadHistory(curPage);
+},2000);
+setInterval(()=>{$('clock').textContent=new Date().toTimeString().substring(0,8)},1000);
+loadStats();
 </script>
 </body>
 </html>
