@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  로그 설정 (Logback)
+  - 콘솔 + 파일 동시 출력
+  - 당일 로그는 항상 ${LOG_DIR}/app.log 에 기록
+  - 날짜가 바뀌면 지난 날짜 로그를 ${LOG_DIR}/2026-07-31.log 형식으로 자동 보관
+  - LOG_DIR 환경변수가 없으면 현재 디렉토리 아래 logs/ 사용 (로컬 개발 시)
+-->
+<configuration>
+
+    <property name="LOG_DIR" value="${LOG_DIR:-logs}"/>
+    <property name="PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"/>
+
+    <!-- 콘솔 출력 (로컬 개발용) -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 파일 출력 + 일자별 롤링 -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/app.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 자정이 지나면 app.log 내용이 이 이름으로 보관되고 app.log는 새로 시작 -->
+            <fileNamePattern>${LOG_DIR}/%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- 14일 지난 로그는 자동 삭제 (디스크 관리) -->
+            <maxHistory>14</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+</configuration>

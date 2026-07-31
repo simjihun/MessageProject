@@ -4,7 +4,9 @@
 # 사용법: ./killall.sh
 # =========================================
 
-APP_JAR="app.jar"
+BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+JAR_NAME="message-project-0.0.1-SNAPSHOT.jar"
+APP_JAR="$BASE_DIR/libs/$JAR_NAME"
 
 # 1. 실행 중인 프로세스 찾기
 PID=$(pgrep -f "java -jar $APP_JAR")
